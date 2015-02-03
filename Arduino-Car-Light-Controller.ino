@@ -19,7 +19,6 @@
 #include <Wire.h>
 #include <math.h> 
 
-
 // Configure all the settings, input pins and output pins down below
 const boolean configUseLowBeamAsDrl   = false; // If set to false, low beam is used instead
 const boolean configDebug             = true; // If set to true, debug information is sent over serial
@@ -40,16 +39,13 @@ const int pinSwitchFogBack   = 6;  // Back fog ight
 const int pinStatusFogFront  = 14; // Actual FFL status. Port Analog 0
 const int pinStatusFogBack   = 15; // Actual BFL status. Port Analog 1
 
-const int pinBrightnessSda   = 4;  // Brightness sensor SDA
-const int pinBrightnessScl   = 5;  // Brightness sensor SCL
-
-const int pinOutWarning      = 7;  // Warning light for malfunction. Ideally on dashboard.
-const int pinOutDrl          = 8;
-const int pinOutPark         = 9;
+const int pinOutWarning      = 13;  // Warning light for malfunction. Ideally on dashboard.
+const int pinOutDrl          = 7;
+const int pinOutPark         = 8;
 const int pinOutLow          = 10;
 const int pinOutFogFront     = 11;
 const int pinOutFogBack      = 12;
-const int pinOutInstr        = 13; // Instrument light (Should be a PWM)
+const int pinOutInstr        = 9; // Instrument light (Should be a PWM)
 
 int lightSensorAddress       = 0x23; // Low: 0x23 (0010 0011), High: 0x5c (0101 1100)
 
@@ -79,6 +75,7 @@ byte brightnessBuffer[2];
 
 boolean modeHasChanged = false;
 long lastChangeTime = 0;
+boolean masterWarningOn = false;
 
 void setup() {
   Wire.begin();
@@ -271,7 +268,8 @@ int getBrightness() {
   lightSensorInit(lightSensorAddress);
   delay(200); // Wait for the measurement (max. 180 ms) to finish.
   if(2==lightSensorRead(lightSensorAddress))
-    return (int)((brightnessBuffer[0]<<8)|brightnessBuffer[1])/1.2;
+    return (int)((brightnessBuffer[0]<<8)|brightnessBuffer[1])/1.2; 
+    // first byte is high byte (bit 15 to 8), second is low byte (7 to 0) -> shift high byte by 8 bit
   else
     return -1;
 }
@@ -293,12 +291,13 @@ int lightSensorRead(int address)
 void lightSensorInit(int address) 
 {
   Wire.beginTransmission(address);
-  Wire.write(0x10); //1lx reolution 120ms, measurement time
+  //Wire.write(0x10); //Continuous 1lx reolution 120ms, measurement time
+  Wire.write(0x20); //One time 1lx reolution 120ms, measurement time
   Wire.endTransmission();
 }
 
 void debugCurrentMode() {
-  int debugPin = 13;//pinOutWarning;
+  int debugPin = pinOutWarning;
   digitalWrite(debugPin, LOW);
   delay(1000);
   for(int i=0; i < modeCurrent; i++) {
@@ -308,29 +307,16 @@ void debugCurrentMode() {
     delay(500);
   }
   delay(800);
-  switch(modeCurrent) {
-    case modePark:
-    case modeParkFog:
-    case modeParkFogBoth:
-    case modeLow:
-    case modeLowFog:
-    case modeLowFogBoth:
-      digitalWrite(debugPin, HIGH);
-      break;
-    case modeAuto:
-      digitalWrite(debugPin, modeAutoCurrent);
-      break;
-    default:
-      digitalWrite(debugPin, LOW);
-    }
+  if(!masterWarningOn) digitalWrite(debugPin, LOW);
 }
 
 void masterWarning() {
   digitalWrite(pinOutWarning, HIGH);
+  masterWarningOn = true;
 }
 
 void masterWarningCheck() {
   digitalWrite(pinOutWarning, HIGH);
   delay(4000);
-  digitalWrite(pinOutWarning, LOW);
+  if(!masterWarningOn) digitalWrite(pinOutWarning, LOW);
 }
