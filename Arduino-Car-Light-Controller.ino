@@ -22,12 +22,12 @@
 // Configure all the settings, input pins and output pins down below
 const boolean configUseLowBeamAsDrl   = false; // If set to false, low beam is used instead
 const boolean configDebug             = true; // If set to true, debug information is sent over serial
-const long modeChangeDelay            = 500; // Delay until new mode is applied 
-const int lightThreshold              = 2000; // Lux
-const long lightOnDelay               = 3000; // How long must the ambient light be under thershold to turn on light
-const long lightOffDelay              = 10000; // How early after turning on can the light be turned off
+const long modeChangeDelay            = 500; // [ms] Delay until new mode is applied 
+const int lightThreshold              = 1500; // [Lux]
+const long lightOnDelay               = 3000; // [ms] How long must the ambient light be under thershold to turn on light
+const long lightOffDelay              = 10000; // [ms] How early after turning on can the light be turned off
 
-// Pin 2 and 3 on the Leonardo are actuall mapped to the same pins of the IC as the SDA and SCL pins.
+// Pin 2 and 3 on the Leonardo are the SDA and SCL pins (although physically also as separate pins).
 // So they can not be used. But as the Serial bus is virtual, pins 0 and 1 can be used instead.
 
 const int pinSwitchAuto      = 0;  // AUTO
@@ -123,6 +123,11 @@ void loop() {
   if(modeCurrent == modeAuto) {
     int brightness = getBrightness();
     if(brightness >= 0) {
+      if(configDebug) {
+        Serial.print("Brightness measured: ");
+        Serial.print(brightness);
+        Serial.println(" lx");
+      }
       modeAutoSensor = (brightness <= lightThreshold);
       if(modeAutoSensor != modeAutoSensorLast) {
         modeAutoSensorLastChange = millis();
@@ -265,8 +270,6 @@ void setAutoOff() {
 }
 
 int getBrightness() {
-  lightSensorInit(lightSensorAddress);
-  delay(200); // Wait for the measurement (max. 180 ms) to finish.
   if(2==lightSensorRead(lightSensorAddress))
     return (int)((brightnessBuffer[0]<<8)|brightnessBuffer[1])/1.2; 
     // first byte is high byte (bit 15 to 8), second is low byte (7 to 0) -> shift high byte by 8 bit
@@ -276,24 +279,24 @@ int getBrightness() {
 
 int lightSensorRead(int address) 
 {
-  int i=0;
   Wire.beginTransmission(address);
-  Wire.requestFrom(address, 2);
-  while(Wire.available()) 
-  {
-    brightnessBuffer[i] = Wire.read();  // receive one byte
-    i++;
-  }
-  Wire.endTransmission();  
-  return i;
-}
-
-void lightSensorInit(int address) 
-{
-  Wire.beginTransmission(address);
-  //Wire.write(0x10); //Continuous 1lx reolution 120ms, measurement time
   Wire.write(0x20); //One time 1lx reolution 120ms, measurement time
-  Wire.endTransmission();
+  boolean initSuccess = Wire.endTransmission(); // Write bytes queued by write()
+  delay(200); // Wait for the measurement (max. 180 ms) to finish.
+  if(initSuccess == 0) {
+    Wire.beginTransmission(address);
+    Wire.requestFrom(address, 2);
+    int i=0;
+    while(Wire.available()) 
+    {
+      brightnessBuffer[i] = Wire.read();  // receive one byte
+      i++;
+    }
+    Wire.endTransmission();  
+    return i;
+  } else {
+    return 0;
+  }
 }
 
 void debugCurrentMode() {
